@@ -81,10 +81,8 @@ if __name__ == "__main__":
     parser.add_argument('--image-path', nargs='+', type=str, default='examples/sample.jpg', help='image path(s)')
     args = parser.parse_args()
     
-    CUR_DIR = osp.dirname(__file__)
-    # CKPT_PATH = f"{CUR_DIR}/vitpose-b-multi-coco.pth"
-    CKPT_PATH = "/home/jaehyun/workspace/PoseEstimation/ViTPose_pytorch/runs/train/002/epoch010.pth"
-    
+    CKPT_PATH = "content/drive/MyDrive/DL1_Project/vitpose-b-multi-coco.pth"
+
     img_size = data_cfg['image_size']
     if type(args.image_path) != list:
          args.image_path = [args.image_path]
