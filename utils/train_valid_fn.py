@@ -15,18 +15,25 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.cuda.amp import autocast, GradScaler
 from tqdm import tqdm
 from time import time
+import json
 
 from utils.dist_util import get_dist_info, init_dist
 from utils.logging import get_root_logger
 
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
+
 @torch.no_grad()
 def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module, cfg: dict) -> None:
     total_loss = 0
-    total_metric = 0
     model.eval()
+    all_outputs = []
+    all_targets = []
+    all_img_ids = []
+
     for dataloader in dataloaders:
         for batch_idx, batch in enumerate(dataloader):
-            images, targets, target_weights, __ = batch
+            images, targets, target_weights, img_ids = batch
             images = images.to('cuda')
             targets = targets.to('cuda')
             target_weights = target_weights.to('cuda')
@@ -34,10 +41,57 @@ def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module,
             outputs = model(images)
             loss = criterion(outputs, targets, target_weights)
             total_loss += loss.item()
-            
-    avg_loss = total_loss/(len(dataloader)*len(dataloaders))
-    return avg_loss
+
+            all_outputs.append(outputs.cpu().numpy())
+            all_targets.append(targets.cpu().numpy())
+            all_img_ids.extend(img_ids)
+
+    dt_results_path = save_results_in_coco_format(all_outputs, all_targets, all_img_ids, cfg.work_dir)
+    gt_annotations_path = cfg.data['val_annotations_path']
+    metrics = calculate_coco_metrics(gt_annotations_path, dt_results_path)
+    
+    avg_loss = total_loss / (len(dataloader) * len(dataloaders))
+    return avg_loss, metrics
  
+def calculate_coco_metrics(gt_annotations_path, dt_results_path):
+    coco_gt = COCO(gt_annotations_path)
+    coco_dt = coco_gt.loadRes(dt_results_path)
+    coco_eval = COCOeval(coco_gt, coco_dt, 'keypoints')
+    coco_eval.evaluate()
+    coco_eval.accumulate()
+    coco_eval.summarize()
+    metrics = {
+        'AP': coco_eval.stats[0],
+        'AP50': coco_eval.stats[1],
+        'AP75': coco_eval.stats[2],
+        'APm': coco_eval.stats[3],
+        'APl': coco_eval.stats[4],
+        'AR': coco_eval.stats[5],
+        'AR50': coco_eval.stats[6],
+        'AR75': coco_eval.stats[7],
+        'ARm': coco_eval.stats[8],
+        'ARl': coco_eval.stats[9],
+    }
+    return metrics
+
+def save_results_in_coco_format(outputs, targets, img_ids, output_dir):
+    results = []
+    for i, (output, target, img_id) in enumerate(zip(outputs, targets, img_ids)):
+        for j in range(output.shape[0]):
+            result = {
+                "image_id": img_id,
+                "category_id": 1,  # Assuming single category for keypoints
+                "keypoints": output[j].flatten().tolist(),
+                "score": 1.0,  # Placeholder score
+            }
+            results.append(result)
+    
+    dt_results_path = osp.join(output_dir, "dt_results.json")
+    with open(dt_results_path, "w") as f:
+        json.dump(results, f)
+    return dt_results_path
+
+
 def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Dataset, cfg: dict, distributed: bool, validate: bool,  timestamp: str, meta: dict) -> None:
     logger = get_root_logger()
     
@@ -158,5 +212,6 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
             # validation
             if validate:
                 tic2 = time()
-                avg_loss_valid = valid_model(model, dataloaders_valid, criterion, cfg)
-                logger.info(f"[Summary-valid] Epoch [{str(epoch).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (valid) {avg_loss_valid:.4f} --- {time()-tic2:.5f} sec. elapsed")
+                avg_loss_valid, metrics_valid = valid_model(model, dataloaders_valid, criterion, cfg)
+                logger.info(f"[Summary-valid] Epoch [{str(epoch).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (valid) {avg_loss_valid:.4f} | AP: {metrics_valid['AP']:.4f} | AR: {metrics_valid['AR']:.4f} | AP50: {metrics_valid['AP50']:.4f} | AP75: {metrics_valid['AP75']:.4f} | AR50: {metrics_valid['AR50']:.4f} | AR75: {metrics_valid['AR75']:.4f} --- {time()-tic2:.5f} sec. elapsed")
+
