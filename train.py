@@ -20,6 +20,9 @@ from utils.logging import get_root_logger
 import configs.ViTPose_base_coco_256x192 as b_cfg
 import configs.ViTPose_large_coco_256x192 as l_cfg
 import configs.ViTPose_huge_coco_256x192 as h_cfg
+import configs.ViTPose_base_simple_coco_256x192 as b_cfg_simple
+import configs.ViTPose_large_simple_coco_256x192 as l_cfg_simple
+import configs.ViTPose_huge_simple_coco_256x192 as h_cfg_simple
 
 from models.model import ViTPose
 from datasets.COCO import COCODataset
@@ -29,12 +32,15 @@ CUR_PATH = osp.dirname(__file__)
 
 @click.command()
 @click.option('--config-path', type=click.Path(exists=True), default='config.yaml', required=True, help='train config file path')
-@click.option('--model-name', type=str, default='b', required=True, help='[b: ViT-B, l: ViT-L, h: ViT-H]')
+@click.option('--model-name', type=str, default='b', required=True, help='[b: ViT-B, l: ViT-L, h: ViT-H, b-simple: ViT-B-simple, l-simple: ViT-L-simple, h-simple: ViT-H-simple]')
 def main(config_path, model_name):
         
     cfg = {'b':b_cfg,
            'l':l_cfg,
-           'h':h_cfg}.get(model_name.lower())
+           'h':h_cfg,
+           'b-simple':b_cfg_simple,
+           'l-simple':l_cfg_simple,
+           'h-simple':h_cfg_simple}.get(model_name.lower())
     # Load config.yaml
     with open(config_path, 'r') as f:
         cfg_yaml = yaml.load(f, Loader=yaml.SafeLoader)
@@ -130,7 +136,7 @@ def main(config_path, model_name):
     
     datasets_valid = COCODataset(
         root_path=cfg.data_root, 
-        data_version="valid2017",
+        data_version="val2017",
         is_train=False, 
         use_gt_bboxes=True,
         image_width=192, 

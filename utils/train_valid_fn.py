@@ -47,7 +47,7 @@ def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module,
             all_img_ids.extend(img_ids)
 
     dt_results_path = save_results_in_coco_format(all_outputs, all_targets, all_img_ids, cfg.work_dir)
-    gt_annotations_path = cfg.data['val_annotations_path']
+    gt_annotations_path = cfg.data['val']['ann_file']
     metrics = calculate_coco_metrics(gt_annotations_path, dt_results_path)
     
     avg_loss = total_loss / (len(dataloader) * len(dataloaders))
@@ -200,14 +200,15 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
                 global_step += 1
                 
                 total_loss += loss.item()
-                train_pbar.set_description(f"🏋️> Epoch [{str(epoch).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Loss {loss.item():.4f} | LR {optimizer.param_groups[0]['lr']:.6f} | Step")
+                train_pbar.set_description(f"🏋️> Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Loss {loss.item():.4f} | LR {optimizer.param_groups[0]['lr']:.6f} | Step")
             scheduler.step()
             
             avg_loss_train = total_loss/len(dataloader)
-            logger.info(f"[Summary-train] Epoch [{str(epoch).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (train) {avg_loss_train:.4f} --- {time()-tic:.5f} sec. elapsed")
-            ckpt_name = f"epoch{str(epoch).zfill(3)}.pth"
-            ckpt_path = osp.join(cfg.work_dir, ckpt_name)
-            torch.save(model.module.state_dict(), ckpt_path)
+            logger.info(f"[Summary-train] Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (train) {avg_loss_train:.4f} --- {time()-tic:.5f} sec. elapsed")
+            if epoch % cfg.save_interval == 0:
+                ckpt_name = f"epoch{str(epoch).zfill(3)}.pth"
+                ckpt_path = osp.join('/content/drive/MyDrive', ckpt_name)
+                torch.save(model.module.state_dict(), ckpt_path)
 
             # validation
             if validate:
