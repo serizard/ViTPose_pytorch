@@ -205,8 +205,8 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
             
             avg_loss_train = total_loss/len(dataloader)
             logger.info(f"[Summary-train] Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (train) {avg_loss_train:.4f} --- {time()-tic:.5f} sec. elapsed")
-            if epoch % cfg.save_interval == 0:
-                ckpt_name = f"epoch{str(epoch).zfill(3)}.pth"
+            if (epoch+1) % cfg.save_interval == 0:
+                ckpt_name = f"epoch{str(epoch+1).zfill(3)}.pth"
                 ckpt_path = osp.join('/content/drive/MyDrive', ckpt_name)
                 torch.save(model.module.state_dict(), ckpt_path)
 
@@ -214,5 +214,5 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
             if validate:
                 tic2 = time()
                 avg_loss_valid, metrics_valid = valid_model(model, dataloaders_valid, criterion, cfg)
-                logger.info(f"[Summary-valid] Epoch [{str(epoch).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (valid) {avg_loss_valid:.4f} | AP: {metrics_valid['AP']:.4f} | AR: {metrics_valid['AR']:.4f} | AP50: {metrics_valid['AP50']:.4f} | AP75: {metrics_valid['AP75']:.4f} | AR50: {metrics_valid['AR50']:.4f} | AR75: {metrics_valid['AR75']:.4f} --- {time()-tic2:.5f} sec. elapsed")
+                logger.info(f"[Summary-valid] Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (valid) {avg_loss_valid:.4f} | AP: {metrics_valid['AP']:.4f} | AR: {metrics_valid['AR']:.4f} | AP50: {metrics_valid['AP50']:.4f} | AP75: {metrics_valid['AP75']:.4f} | AR50: {metrics_valid['AR50']:.4f} | AR75: {metrics_valid['AR75']:.4f} --- {time()-tic2:.5f} sec. elapsed")
 

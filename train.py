@@ -66,7 +66,7 @@ def main(config_path, model_name):
         session = 1
     else:
         session = int(os.path.basename(session_list[-1])) + 1
-    session_dir = osp.join(cfg.work_dir, str(session).zfill(3))
+    session_dir = osp.join(cfg.work_dir, str(session).zfill(3)) ##########
     os.makedirs(session_dir)
     cfg.__setattr__('work_dir', session_dir)
         
