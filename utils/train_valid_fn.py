@@ -1,5 +1,4 @@
 import os.path as osp
-
 import torch
 import torch.nn as nn
 
@@ -24,38 +23,76 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
 @torch.no_grad()
-def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module, cfg: dict) -> None:
+def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module, cfg: dict, logger) -> None:
     total_loss = 0
     model.eval()
     all_outputs = []
     all_targets = []
     all_img_ids = []
 
+    tic = time()  # Start timer for validation
     for dataloader in dataloaders:
-        for batch_idx, batch in enumerate(dataloader):
+        val_pbar = tqdm(dataloader, desc="Validating")
+        for batch_idx, batch in enumerate(val_pbar):
             images, targets, target_weights, img_ids = batch
             images = images.to('cuda')
             targets = targets.to('cuda')
             target_weights = target_weights.to('cuda')
-            
-            outputs = model(images)
-            loss = criterion(outputs, targets, target_weights)
-            total_loss += loss.item()
 
-            all_outputs.append(outputs.cpu().numpy())
-            all_targets.append(targets.cpu().numpy())
-            all_img_ids.extend(img_ids)
+            with torch.no_grad():  # No gradient calculation
+                outputs = model(images)
+                loss = criterion(outputs, targets, target_weights)
+                total_loss += loss.item()
 
-    dt_results_path = save_results_in_coco_format(all_outputs, all_targets, all_img_ids, cfg.work_dir)
-    gt_annotations_path = cfg.data['val']['ann_file']
-    metrics = calculate_coco_metrics(gt_annotations_path, dt_results_path)
-    
+                all_outputs.append(outputs.cpu().numpy())
+                all_targets.append(targets.cpu().numpy())
+                all_img_ids.extend(img_ids)
+
+            # Calculate elapsed and estimated time
+            elapsed_time = time() - tic
+            avg_batch_time = elapsed_time / (batch_idx + 1)
+            remaining_batches = len(dataloader) - (batch_idx + 1)
+            estimated_time = avg_batch_time * remaining_batches
+
+            val_pbar.set_postfix(
+                Loss=loss.item(),
+                Elapsed=f"{elapsed_time:.2f}s",
+                ETA=f"{estimated_time:.2f}s"
+            )
+
+    metrics = calculate_coco_metrics_from_arrays(all_outputs, all_targets, all_img_ids)
+
     avg_loss = total_loss / (len(dataloader) * len(dataloaders))
-    return avg_loss, metrics
- 
-def calculate_coco_metrics(gt_annotations_path, dt_results_path):
-    coco_gt = COCO(gt_annotations_path)
-    coco_dt = coco_gt.loadRes(dt_results_path)
+    toc = time()  # End timer for validation
+    elapsed_time = toc - tic  # Calculate elapsed time for validation
+
+    logger.info(f"Validation completed in {elapsed_time:.2f}s")
+    return avg_loss, metrics, elapsed_time  # Return the elapsed time along with other metrics
+
+def calculate_coco_metrics_from_arrays(outputs, targets, img_ids):
+    coco_gt = COCO()
+    coco_gt.dataset = {
+        'images': [{'id': img_id} for img_id in img_ids],
+        'annotations': [{'image_id': img_id, 'category_id': 1, 'keypoints': target.flatten().tolist(), 'id': i} 
+                        for i, (target, img_id) in enumerate(zip(targets, img_ids))],
+        'categories': [{'id': 1, 'name': 'person', 'keypoints': ['nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear',
+                                                                'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
+                                                                'left_wrist', 'right_wrist', 'left_hip', 'right_hip', 'left_knee',
+                                                                'right_knee', 'left_ankle', 'right_ankle'], 'skeleton': []}]
+    }
+    coco_gt.createIndex()
+    
+    results = []
+    for i, output in enumerate(outputs):
+        for j in range(output.shape[0]):
+            results.append({
+                "image_id": img_ids[i],
+                "category_id": 1,  # Assuming single category for keypoints
+                "keypoints": output[j].flatten().tolist(),
+                "score": 1.0,  # Placeholder score
+            })
+    
+    coco_dt = coco_gt.loadRes(results)
     coco_eval = COCOeval(coco_gt, coco_dt, 'keypoints')
     coco_eval.evaluate()
     coco_eval.accumulate()
@@ -64,33 +101,11 @@ def calculate_coco_metrics(gt_annotations_path, dt_results_path):
         'AP': coco_eval.stats[0],
         'AP50': coco_eval.stats[1],
         'AP75': coco_eval.stats[2],
-        'APm': coco_eval.stats[3],
-        'APl': coco_eval.stats[4],
         'AR': coco_eval.stats[5],
         'AR50': coco_eval.stats[6],
         'AR75': coco_eval.stats[7],
-        'ARm': coco_eval.stats[8],
-        'ARl': coco_eval.stats[9],
     }
     return metrics
-
-def save_results_in_coco_format(outputs, targets, img_ids, output_dir):
-    results = []
-    for i, (output, target, img_id) in enumerate(zip(outputs, targets, img_ids)):
-        for j in range(output.shape[0]):
-            result = {
-                "image_id": img_id,
-                "category_id": 1,  # Assuming single category for keypoints
-                "keypoints": output[j].flatten().tolist(),
-                "score": 1.0,  # Placeholder score
-            }
-            results.append(result)
-    
-    dt_results_path = osp.join(output_dir, "dt_results.json")
-    with open(dt_results_path, "w") as f:
-        json.dump(results, f)
-    return dt_results_path
-
 
 def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Dataset, cfg: dict, distributed: bool, validate: bool,  timestamp: str, meta: dict, experiment: int) -> None:
     logger = get_root_logger()
@@ -213,6 +228,5 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
             # validation
             if validate:
                 tic2 = time()
-                avg_loss_valid, metrics_valid = valid_model(model, dataloaders_valid, criterion, cfg)
-                logger.info(f"[Summary-valid] Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (valid) {avg_loss_valid:.4f} | AP: {metrics_valid['AP']:.4f} | AR: {metrics_valid['AR']:.4f} | AP50: {metrics_valid['AP50']:.4f} | AP75: {metrics_valid['AP75']:.4f} | AR50: {metrics_valid['AR50']:.4f} | AR75: {metrics_valid['AR75']:.4f} --- {time()-tic2:.5f} sec. elapsed")
-
+                avg_loss_valid, metrics_valid, elapsed_time_valid = valid_model(model, dataloaders_valid, criterion, cfg, logger)
+                logger.info(f"[Summary-valid] Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (valid) {avg_loss_valid:.4f} | AP: {metrics_valid['AP']:.4f} | AR: {metrics_valid['AR']:.4f} | AP50: {metrics_valid['AP50']:.4f} | AP75: {metrics_valid['AP75']:.4f} | AR50: {metrics_valid['AR50']:.4f} | AR75: {metrics_valid['AR75']:.4f} --- {elapsed_time_valid:.5f} sec. elapsed")

@@ -34,8 +34,9 @@ CUR_PATH = osp.dirname(__file__)
 @click.option('--config-path', type=click.Path(exists=True), default='config.yaml', required=True, help='train config file path')
 @click.option('--model-name', type=str, default='b', required=True, help='[b: ViT-B, l: ViT-L, h: ViT-H, b-simple: ViT-B-simple, l-simple: ViT-L-simple, h-simple: ViT-H-simple]')
 @click.option('--experiment', type=int, default=1, help='1~12')
+@click.option('--batch-size', type=int, default=32, help='batch size')
 
-def main(config_path, model_name, experiment):
+def main(config_path, model_name, experiment, batch_size):
         
     cfg = {'b':b_cfg,
            'l':l_cfg,
@@ -116,6 +117,8 @@ def main(config_path, model_name, experiment):
     model = ViTPose(cfg.model)
     if cfg.resume_from:
         model.load_state_dict(torch.load(cfg.resume_from)['state_dict'])
+        
+    cfg.data['samples_per_gpu'] = batch_size
     
     # Set dataset
     datasets_train = COCODataset(
