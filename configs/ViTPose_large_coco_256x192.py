@@ -139,7 +139,7 @@ val_pipeline = [
 
 test_pipeline = val_pipeline
 
-data_root = '/data/gaya'
+data_root = '/home/gaya/group6/datasets'
 data = dict(
     samples_per_gpu=64,
     workers_per_gpu=4,
