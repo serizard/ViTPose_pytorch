@@ -1,6 +1,7 @@
 import os.path as osp
 import torch
 import torch.nn as nn
+import numpy as np
 
 from models.losses import JointsMSELoss
 from models.optimizer import LayerDecayOptimizer
@@ -46,8 +47,8 @@ def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module,
 
                 all_outputs.append(outputs.cpu().numpy())
                 all_targets.append(targets.cpu().numpy())
-                all_img_ids.extend(img_ids)
-
+                all_img_ids.append(img_ids)
+                
             # Calculate elapsed and estimated time
             elapsed_time = time() - tic
             avg_batch_time = elapsed_time / (batch_idx + 1)
@@ -60,52 +61,62 @@ def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module,
                 ETA=f"{estimated_time:.2f}s"
             )
 
-    metrics = calculate_coco_metrics_from_arrays(all_outputs, all_targets, all_img_ids)
 
     avg_loss = total_loss / (len(dataloader) * len(dataloaders))
     toc = time()  # End timer for validation
     elapsed_time = toc - tic  # Calculate elapsed time for validation
 
-    logger.info(f"Validation completed in {elapsed_time:.2f}s")
-    return avg_loss, metrics, elapsed_time  # Return the elapsed time along with other metrics
+    all_outputs = np.vstack(all_outputs)
+    all_targets = np.vstack(all_targets)
+    all_img_ids = [item for sublist in all_img_ids for item in sublist] 
 
-def calculate_coco_metrics_from_arrays(outputs, targets, img_ids):
-    coco_gt = COCO()
-    coco_gt.dataset = {
-        'images': [{'id': img_id} for img_id in img_ids],
-        'annotations': [{'image_id': img_id, 'category_id': 1, 'keypoints': target.flatten().tolist(), 'id': i} 
-                        for i, (target, img_id) in enumerate(zip(targets, img_ids))],
-        'categories': [{'id': 1, 'name': 'person', 'keypoints': ['nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear',
-                                                                'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
-                                                                'left_wrist', 'right_wrist', 'left_hip', 'right_hip', 'left_knee',
-                                                                'right_knee', 'left_ankle', 'right_ankle'], 'skeleton': []}]
-    }
-    coco_gt.createIndex()
-    
-    results = []
-    for i, output in enumerate(outputs):
-        for j in range(output.shape[0]):
-            results.append({
-                "image_id": img_ids[i],
-                "category_id": 1,  # Assuming single category for keypoints
-                "keypoints": output[j].flatten().tolist(),
-                "score": 1.0,  # Placeholder score
-            })
-    
-    coco_dt = coco_gt.loadRes(results)
-    coco_eval = COCOeval(coco_gt, coco_dt, 'keypoints')
-    coco_eval.evaluate()
-    coco_eval.accumulate()
-    coco_eval.summarize()
-    metrics = {
-        'AP': coco_eval.stats[0],
-        'AP50': coco_eval.stats[1],
-        'AP75': coco_eval.stats[2],
-        'AR': coco_eval.stats[5],
-        'AR50': coco_eval.stats[6],
-        'AR75': coco_eval.stats[7],
-    }
-    return metrics
+    # Convert predictions to COCO format
+    coco_results = convert_to_coco_format(all_outputs, all_targets, all_img_ids, cfg)
+
+    # Save the results to a JSON file
+    with open('./predictions.json', 'w') as f:
+        json.dump(coco_results, f)
+
+    # Ground truth annotations
+    cocoGt = COCO('/home/gaya/group6/datasets/annotations/person_keypoints_val2017.json')
+
+    # Load the prediction results
+    cocoDt = cocoGt.loadRes('./predictions.json')
+
+    # Initialize COCOeval
+    cocoEval = COCOeval(cocoGt, cocoDt, 'keypoints')
+
+    # Run evaluation
+    cocoEval.evaluate()
+    cocoEval.accumulate()
+    cocoEval.summarize()
+
+    # Optionally, log the results
+    logger.info('Validation results:')
+    cocoEval.summarize()
+
+    return avg_loss, elapsed_time  # Return the elapsed time along with other metrics
+
+def convert_to_coco_format(all_outputs, all_targets, all_img_ids, cfg):
+    # List to store results in COCO format
+    coco_results = []
+
+    # Iterate over all predictions and actual targets
+    for outputs, targets, img_id in zip(all_outputs, all_targets, all_img_ids):
+        keypoints = outputs.reshape(-1).tolist()
+        keypoints_gt = targets.reshape(-1).tolist()
+
+        result = {
+            "image_id": img_id,
+            "category_id": 1,  # Assuming single category (person)
+            "keypoints": keypoints,
+            "score": 1.0  # Placeholder score
+        }
+
+        coco_results.append(result)
+
+    return coco_results
+
 
 def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Dataset, cfg: dict, distributed: bool, validate: bool,  timestamp: str, meta: dict, experiment: int) -> None:
     logger = get_root_logger()
@@ -219,7 +230,7 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
             scheduler.step()
             
             avg_loss_train = total_loss/len(dataloader)
-            logger.info(f"[Summary-train] Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (train) {avg_loss_train:.4f} --- {time()-tic:.5f} sec. elapsed")
+            logger.info(f"[Summary-train] Ex {experiment} Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (train) {avg_loss_train:.4f} --- {time()-tic:.5f} sec. elapsed")
             if (epoch+1) % cfg.save_interval == 0:
                 ckpt_name = f"Experiment {experiment} - epoch{str(epoch+1).zfill(3)}.pth"
                 ckpt_path = osp.join('/home/gaya/group6/checkpoints', ckpt_name)
@@ -228,5 +239,5 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
             # validation
             if validate:
                 tic2 = time()
-                avg_loss_valid, metrics_valid, elapsed_time_valid = valid_model(model, dataloaders_valid, criterion, cfg, logger)
-                logger.info(f"[Summary-valid] Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (valid) {avg_loss_valid:.4f} | AP: {metrics_valid['AP']:.4f} | AR: {metrics_valid['AR']:.4f} | AP50: {metrics_valid['AP50']:.4f} | AP75: {metrics_valid['AP75']:.4f} | AR50: {metrics_valid['AR50']:.4f} | AR75: {metrics_valid['AR75']:.4f} --- {elapsed_time_valid:.5f} sec. elapsed")
+                avg_loss_valid, elapsed_time_valid = valid_model(model, dataloaders_valid, criterion, cfg, logger)
+                logger.info(f"[Summary-valid] Ex {experiment} Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (valid) {avg_loss_valid:.4f} | AP: {metrics_valid['AP']:.4f} | AR: {metrics_valid['AR']:.4f} | AP50: {metrics_valid['AP50']:.4f} | AP75: {metrics_valid['AP75']:.4f} | AR50: {metrics_valid['AR50']:.4f} | AR75: {metrics_valid['AR75']:.4f} --- {elapsed_time_valid:.5f} sec. elapsed")

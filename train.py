@@ -35,8 +35,9 @@ CUR_PATH = osp.dirname(__file__)
 @click.option('--model-name', type=str, default='b', required=True, help='[b: ViT-B, l: ViT-L, h: ViT-H, b-simple: ViT-B-simple, l-simple: ViT-L-simple, h-simple: ViT-H-simple]')
 @click.option('--experiment', type=int, default=1, help='1~12')
 @click.option('--batch-size', type=int, default=32, help='batch size')
+@click.option('--epochs', type=int, default=210, help='epochs')
 
-def main(config_path, model_name, experiment, batch_size):
+def main(config_path, model_name, experiment, batch_size, epochs):
         
     cfg = {'b':b_cfg,
            'l':l_cfg,
@@ -64,12 +65,7 @@ def main(config_path, model_name, experiment, batch_size):
         
     if not osp.exists(cfg.work_dir):
         os.makedirs(cfg.work_dir)
-    session_list = sorted(glob(f"{cfg.work_dir}/*"))
-    if len(session_list) == 0:
-        session = 1
-    else:
-        session = int(os.path.basename(session_list[-1])) + 1
-    session_dir = osp.join(cfg.work_dir, str(session).zfill(3)) ##########
+    session_dir = osp.join(cfg.work_dir, str(experiment).zfill(3))
     os.makedirs(session_dir)
     cfg.__setattr__('work_dir', session_dir)
         
@@ -119,6 +115,8 @@ def main(config_path, model_name, experiment, batch_size):
         model.load_state_dict(torch.load(cfg.resume_from)['state_dict'])
         
     cfg.data['samples_per_gpu'] = batch_size
+
+    cfg.total_epochs = epochs
     
     # Set dataset
     datasets_train = COCODataset(
