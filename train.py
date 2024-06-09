@@ -33,7 +33,9 @@ CUR_PATH = osp.dirname(__file__)
 @click.command()
 @click.option('--config-path', type=click.Path(exists=True), default='config.yaml', required=True, help='train config file path')
 @click.option('--model-name', type=str, default='b', required=True, help='[b: ViT-B, l: ViT-L, h: ViT-H, b-simple: ViT-B-simple, l-simple: ViT-L-simple, h-simple: ViT-H-simple]')
-def main(config_path, model_name):
+@click.option('--experiment', type=int, default=1, help='1~12')
+
+def main(config_path, model_name, experiment):
         
     cfg = {'b':b_cfg,
            'l':l_cfg,
@@ -160,7 +162,8 @@ def main(config_path, model_name):
         distributed=distributed,
         validate=cfg.validate,
         timestamp=timestamp,
-        meta=meta
+        meta=meta,
+        experiment=experiment
         )
 
 

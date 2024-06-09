@@ -87,8 +87,8 @@ data_cfg = dict(
     vis_thr=0.2,
     use_gt_bbox=False,
     det_bbox_thr=0.0,
-    bbox_file='data/coco/person_detection_results/'
-    'COCO_val2017_detections_AP_H_56_person.json',
+    # bbox_file='data/coco/person_detection_results/'
+    # 'COCO_val2017_detections_AP_H_56_person.json',
 )
 
 train_pipeline = [
@@ -139,7 +139,7 @@ val_pipeline = [
 
 test_pipeline = val_pipeline
 
-data_root = 'datasets/coco'
+data_root = '/data/gaya'
 data = dict(
     samples_per_gpu=64,
     workers_per_gpu=4,

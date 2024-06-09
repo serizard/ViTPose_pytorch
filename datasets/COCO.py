@@ -26,7 +26,7 @@ class COCODataset(Dataset):
     COCODataset class.
     """
 
-    def __init__(self, root_path="datasets/coco", data_version="train2017", 
+    def __init__(self, root_path="/data/gaya", data_version="train2017", 
                  is_train=True, use_gt_bboxes=True, bbox_path="",
                  image_width=288, image_height=384,
                  scale=True, scale_factor=0.35, flip_prob=0.5, rotate_prob=0.5, rotation_factor=45., half_body_prob=0.3,

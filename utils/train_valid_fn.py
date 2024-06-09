@@ -92,7 +92,7 @@ def save_results_in_coco_format(outputs, targets, img_ids, output_dir):
     return dt_results_path
 
 
-def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Dataset, cfg: dict, distributed: bool, validate: bool,  timestamp: str, meta: dict) -> None:
+def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Dataset, cfg: dict, distributed: bool, validate: bool,  timestamp: str, meta: dict, experiment: int) -> None:
     logger = get_root_logger()
     
     # Prepare data loaders
@@ -206,8 +206,8 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
             avg_loss_train = total_loss/len(dataloader)
             logger.info(f"[Summary-train] Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (train) {avg_loss_train:.4f} --- {time()-tic:.5f} sec. elapsed")
             if (epoch+1) % cfg.save_interval == 0:
-                ckpt_name = f"epoch{str(epoch+1).zfill(3)}.pth"
-                ckpt_path = osp.join('/content/drive/MyDrive', ckpt_name)
+                ckpt_name = f"Experiment {experiment} - epoch{str(epoch+1).zfill(3)}.pth"
+                ckpt_path = osp.join('/home/gaya/group6/checkpoints', ckpt_name)
                 torch.save(model.module.state_dict(), ckpt_path)
 
             # validation
