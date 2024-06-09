@@ -188,8 +188,8 @@ class COCODataset(Dataset):
 
             # for each annotation of this image, add the formatted annotation to self.data
             for obj in objs:
-                joints = np.zeros((self.num_joints, 2), dtype=np.float)
-                joints_visibility = np.ones((self.num_joints, 2), dtype=np.float)
+                joints = np.zeros((self.num_joints, 2), dtype=np.float32)
+                joints_visibility = np.ones((self.num_joints, 2), dtype=np.float32)
 
                 if self.use_gt_bboxes:
                     """ COCO pre-processing
