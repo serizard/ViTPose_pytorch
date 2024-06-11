@@ -37,22 +37,6 @@ CUR_PATH = osp.dirname(__file__)
 @click.option('--batch-size', type=int, default=32, help='batch size')
 @click.option('--epochs', type=int, default=210, help='epochs')
 
-def resize_pos_embed(pos_embed, new_height, new_width, patch_size, embed_dim):
-    cls_token = pos_embed[:, 0]
-    pos_tokens = pos_embed[:, 1:]
-
-    orig_num_patches = pos_tokens.shape[1]
-    orig_size = int(orig_num_patches ** 0.5)  # Assuming square grid
-
-    pos_tokens = pos_tokens.reshape(1, orig_size, orig_size, embed_dim).permute(0, 3, 1, 2)
-    new_pos_tokens = F.interpolate(pos_tokens, size=(new_height // patch_size, new_width // patch_size), mode='bicubic', align_corners=False)
-    new_pos_tokens = new_pos_tokens.permute(0, 2, 3, 1).reshape(1, -1, embed_dim)
-
-    new_pos_embed = torch.cat((cls_token.unsqueeze(0), new_pos_tokens), dim=1)
-
-    return new_pos_embed
-
-
 def main(config_path, model_name, experiment, batch_size, epochs):
         
     cfg = {'b':b_cfg,
@@ -203,6 +187,21 @@ def main(config_path, model_name, experiment, batch_size, epochs):
         meta=meta,
         experiment=experiment
         )
+
+def resize_pos_embed(pos_embed, new_height, new_width, patch_size, embed_dim):
+    cls_token = pos_embed[:, 0]
+    pos_tokens = pos_embed[:, 1:]
+
+    orig_num_patches = pos_tokens.shape[1]
+    orig_size = int(orig_num_patches ** 0.5)  # Assuming square grid
+
+    pos_tokens = pos_tokens.reshape(1, orig_size, orig_size, embed_dim).permute(0, 3, 1, 2)
+    new_pos_tokens = F.interpolate(pos_tokens, size=(new_height // patch_size, new_width // patch_size), mode='bicubic', align_corners=False)
+    new_pos_tokens = new_pos_tokens.permute(0, 2, 3, 1).reshape(1, -1, embed_dim)
+
+    new_pos_embed = torch.cat((cls_token.unsqueeze(0), new_pos_tokens), dim=1)
+
+    return new_pos_embed
 
 
 if __name__ == '__main__':
