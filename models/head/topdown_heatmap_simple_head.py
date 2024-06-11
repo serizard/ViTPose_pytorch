@@ -185,23 +185,13 @@ class TopdownHeatmapSimpleHead(TopdownHeatmapBaseHead):
 
         return accuracy
 
-    # def forward(self, x):
-    #     """Forward function."""
-    #     x = self._transform_inputs(x)
-    #     x = self.deconv_layers(x)
-    #     x = self.final_layer(x)
-    #     return x
-
     def forward(self, x):
         """Forward function."""
-        print("Input x: ", x.shape if x is not None else 'None')  # 입력의 형태 출력
         x = self._transform_inputs(x)
-        print("Transformed x: ", x.shape if x is not None else 'None')  # 변환된 입력의 형태 출력
         x = self.deconv_layers(x)
-        print("Deconv layers output x: ", x.shape if x is not None else 'None')  # 디컨볼루션 레이어 출력의 형태 출력
         x = self.final_layer(x)
-        print("Final layer output x: ", x.shape if x is not None else 'None')  # 최종 레이어 출력의 형태 출력
         return x
+
 
     def inference_model(self, x, flip_pairs=None):
         """Inference function.
@@ -278,14 +268,13 @@ class TopdownHeatmapSimpleHead(TopdownHeatmapBaseHead):
             Tensor: The transformed inputs
         """
         if not isinstance(inputs, list):
-            if not isinstance(inputs, list):
-                if self.upsample > 0:
-                    inputs = resize(
-                        input=F.relu(inputs),
-                        scale_factor=self.upsample,
-                        mode='bilinear',
-                        align_corners=self.align_corners
-                        )
+            if self.upsample > 0:
+                inputs = resize(
+                    input=F.relu(inputs),
+                    scale_factor=self.upsample,
+                    mode='bilinear',
+                    align_corners=self.align_corners
+                    )
             return inputs
 
         if self.input_transform == 'resize_concat':

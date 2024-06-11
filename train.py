@@ -129,7 +129,7 @@ def main(config_path, model_name, experiment, batch_size, epochs, random_seed):
         del pretrained_backbone['model']['norm.bias']
 
         modified_dict = {f'backbone.{key}': value for key, value in pretrained_backbone['model'].items()}
-
+        
         for name, param in model.named_parameters():
             if name in modified_dict:
                 param.data.copy_(modified_dict[name])
