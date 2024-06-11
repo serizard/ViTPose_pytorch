@@ -57,6 +57,10 @@ def main(config_path, model_name, experiment, batch_size, epochs, random_seed):
         else:
             cfg.__setattr__(k, v)
 
+    cfg.data['samples_per_gpu'] = batch_size
+
+    cfg.total_epochs = epochs
+
     # set cudnn_benchmark
     if cfg.cudnn_benchmark:
         torch.backends.cudnn.benchmark = True
@@ -111,8 +115,9 @@ def main(config_path, model_name, experiment, batch_size, epochs, random_seed):
     set_random_seed(seed, deterministic=cfg.deterministic)
     meta['seed'] = seed
 
-    # Set model
+
     model = ViTPose(cfg.model)
+
     pretrained_path = cfg.model['pretrained']
     if pretrained_path:
         pretrained_backbone = torch.load(pretrained_path)
@@ -137,10 +142,7 @@ def main(config_path, model_name, experiment, batch_size, epochs, random_seed):
 
     if cfg.resume_from:
         model.load_state_dict(torch.load(cfg.resume_from)['state_dict'])
-        
-    cfg.data['samples_per_gpu'] = batch_size
-
-    cfg.total_epochs = epochs
+    
     
     # Set dataset
     datasets_train = COCODataset(

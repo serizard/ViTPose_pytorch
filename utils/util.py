@@ -11,6 +11,7 @@ import torch.nn as nn
 
 from torch import distributed as dist
 from torch.nn.parallel import DataParallel, DistributedDataParallel
+import torch.nn.functional as F
 
 from .dist_util import get_dist_info
 
@@ -224,6 +225,8 @@ def resize(input,
                         f'out size {(output_h, output_w)} is `nx+1`')
     if isinstance(size, torch.Size):
         size = tuple(int(x) for x in size)
+    
+    return F.interpolate(input, size=size, scale_factor=scale_factor, mode=mode, align_corners=align_corners)
         
 def constant_init(module: nn.Module, val: float, bias: float = 0) -> None:
     if hasattr(module, 'weight') and module.weight is not None:

@@ -103,7 +103,7 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
     # Optimizer
     optimizer = AdamW(model.parameters(), lr=cfg.optimizer['lr']*10, betas=cfg.optimizer['betas'], weight_decay=cfg.optimizer['weight_decay'])
     
-    num_training_steps = 149312 // cfg.data['samples_per_gpu']
+    num_training_steps = int(149312 / cfg.data['samples_per_gpu'])
     num_warmup_steps = int(0.1 * num_training_steps) #cfg.lr_config['warmup_iters']  # Number of warm-up steps
     warmup_scheduler = get_cosine_schedule_with_warmup(
         optimizer,
@@ -119,19 +119,6 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
     milestones = cfg.lr_config['step']
     gamma = 0.1
     scheduler = MultiStepLR(optimizer, milestones, gamma)
-
-    # Warm-up scheduler
-    # num_training_steps = len(dataloaders_train[0]) // cfg.data['samples_per_gpu'] * cfg.total_epochs
-    # num_warmup_steps = int(0.1 * num_training_steps) #cfg.lr_config['warmup_iters']  # Number of warm-up steps
-    # # warmup_scheduler = cosine_annealing_with_warmup(optimizer, num_warmup_steps, num_training_steps)
-    # warmup_scheduler = get_cosine_schedule_with_warmup(
-    #     optimizer,
-    #     num_warmup_steps=num_warmup_steps,
-    #     num_training_steps=num_training_steps,
-    #     num_cycles=1,
-    # )
-    
-    # layerwise_optimizer.warmup_scheduler = warmup_scheduler
     
     # AMP setting
     if cfg.use_amp:
