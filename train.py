@@ -37,8 +37,9 @@ CUR_PATH = osp.dirname(__file__)
 @click.option('--experiment', type=int, default=1, help='1~12')
 @click.option('--batch-size', type=int, default=32, help='batch size')
 @click.option('--epochs', type=int, default=210, help='epochs')
+@click.option('--random-seed', type=int, default=None, help='random seed')
 
-def main(config_path, model_name, experiment, batch_size, epochs):
+def main(config_path, model_name, experiment, batch_size, epochs, random_seed):
         
     cfg = {'b':b_cfg,
            'l':l_cfg,
@@ -104,7 +105,7 @@ def main(config_path, model_name, experiment, batch_size, epochs):
     logger.info(f'Distributed training: {distributed}')
 
     # set random seeds
-    seed = init_random_seed(cfg.seed)
+    seed = init_random_seed(random_seed)
     logger.info(f"Set random seed to {seed}, "
                 f"deterministic: {cfg.deterministic}")
     set_random_seed(seed, deterministic=cfg.deterministic)
@@ -187,7 +188,8 @@ def main(config_path, model_name, experiment, batch_size, epochs):
         validate=cfg.validate,
         timestamp=timestamp,
         meta=meta,
-        experiment=experiment
+        experiment=experiment,
+        seed=random_seed
         )
 
 def resize_pos_embed(pos_embed, new_height, new_width, patch_size, embed_dim):
