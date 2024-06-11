@@ -16,12 +16,25 @@ from torch.cuda.amp import autocast, GradScaler
 from tqdm import tqdm
 from time import time
 import json
+import math
 
 from utils.dist_util import get_dist_info, init_dist
 from utils.logging import get_root_logger
 
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
+
+
+def cosine_annealing_with_warmup(optimizer, num_warmup_steps, num_training_steps, num_cycles=0.5, last_epoch=-1):
+    def lr_lambda(current_step):
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * num_cycles * progress)))
+
+    return LambdaLR(optimizer, lr_lambda, last_epoch)
+
+
 
 @torch.no_grad()
 def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module, cfg: dict, logger) -> None:
@@ -110,13 +123,14 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
     scheduler = MultiStepLR(optimizer, milestones, gamma)
 
     # Warm-up scheduler
-    total_steps = len(dataloaders_train[0]) * cfg.total_epochs
-    num_warmup_steps = int(total_steps * 0.1) #cfg.lr_config['warmup_iters']  # Number of warm-up steps
-    warmup_factor = cfg.lr_config['warmup_ratio']  # Initial learning rate = warmup_factor * learning_rate
-    warmup_scheduler = LambdaLR(
-        optimizer,
-        lr_lambda=lambda step: warmup_factor + (1.0 - warmup_factor) * step / num_warmup_steps
-    )
+    num_training_steps = len(dataloaders_train[0]) // cfg.data['samples_per_gpu'] * cfg.total_epochs
+    num_warmup_steps = int(0.1 * num_training_steps) #cfg.lr_config['warmup_iters']  # Number of warm-up steps
+    warmup_scheduler = cosine_annealing_with_warmup(optimizer, num_warmup_steps, num_training_steps)
+    # warmup_factor = cfg.lr_config['warmup_ratio']  # Initial learning rate = warmup_factor * learning_rate
+    # warmup_scheduler = LambdaLR(
+    #     optimizer,
+    #     lr_lambda=lambda step: warmup_factor + (1.0 - warmup_factor) * step / num_warmup_steps
+    # )
     
     # AMP setting
     if cfg.use_amp:
