@@ -115,6 +115,7 @@ def main(config_path, model_name, experiment, batch_size, epochs):
     pretrained_path = cfg.model['pretrained']
     if pretrained_path:
         pretrained_backbone = torch.load(pretrained_path)
+        print('Load pretrained model from', pretrained_path)
         width, height = cfg.model['backbone']['img_size']
         patch_size = cfg.model['backbone']['patch_size']
         embed_dim = cfg.model['backbone']['embed_dim']

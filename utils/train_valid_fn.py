@@ -13,6 +13,7 @@ from torch.optim.lr_scheduler import LambdaLR, MultiStepLR
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 from torch.cuda.amp import autocast, GradScaler
+from transformers import get_cosine_schedule_with_warmup
 from tqdm import tqdm
 from time import time
 import json
@@ -23,16 +24,6 @@ from utils.logging import get_root_logger
 
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
-
-
-def cosine_annealing_with_warmup(optimizer, num_warmup_steps, num_training_steps, num_cycles=0.5, last_epoch=-1):
-    def lr_lambda(current_step):
-        if current_step < num_warmup_steps:
-            return float(current_step) / float(max(1, num_warmup_steps))
-        progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
-        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * num_cycles * progress)))
-
-    return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 
 
@@ -110,27 +101,24 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
     criterion = JointsMSELoss(use_target_weight=cfg.model['keypoint_head']['loss_keypoint']['use_target_weight'])
     
     # Optimizer
-    optimizer = AdamW(model.parameters(), lr=cfg.optimizer['lr'], betas=cfg.optimizer['betas'], weight_decay=cfg.optimizer['weight_decay'])
+    optimizer = AdamW(model.parameters(), lr=cfg.optimizer['lr']*10, betas=cfg.optimizer['betas'], weight_decay=cfg.optimizer['weight_decay'])
     
+    num_training_steps = 149312 // cfg.data['samples_per_gpu']
+    num_warmup_steps = int(0.1 * num_training_steps) #cfg.lr_config['warmup_iters']  # Number of warm-up steps
+    warmup_scheduler = get_cosine_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=num_warmup_steps,
+        num_training_steps=num_training_steps
+    )
     # Layer-wise learning rate decay
     lr_mult = [cfg.optimizer['paramwise_cfg']['layer_decay_rate']] * cfg.optimizer['paramwise_cfg']['num_layers']
-    layerwise_optimizer = LayerDecayOptimizer(optimizer, lr_mult)
+    layerwise_optimizer = LayerDecayOptimizer(optimizer, lr_mult, warmup_scheduler)
     
     
     # Learning rate scheduler (MultiStepLR)
     milestones = cfg.lr_config['step']
     gamma = 0.1
     scheduler = MultiStepLR(optimizer, milestones, gamma)
-
-    # Warm-up scheduler
-    num_training_steps = len(dataloaders_train[0]) // cfg.data['samples_per_gpu'] * cfg.total_epochs
-    num_warmup_steps = int(0.1 * num_training_steps) #cfg.lr_config['warmup_iters']  # Number of warm-up steps
-    warmup_scheduler = cosine_annealing_with_warmup(optimizer, num_warmup_steps, num_training_steps)
-    # warmup_factor = cfg.lr_config['warmup_ratio']  # Initial learning rate = warmup_factor * learning_rate
-    # warmup_scheduler = LambdaLR(
-    #     optimizer,
-    #     lr_lambda=lambda step: warmup_factor + (1.0 - warmup_factor) * step / num_warmup_steps
-    # )
     
     # AMP setting
     if cfg.use_amp:
@@ -191,7 +179,7 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
             avg_loss_train = total_loss/len(dataloader)
             logger.info(f"[Summary-train] Ex {experiment} Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (train) {avg_loss_train:.4f} --- {time()-tic:.5f} sec. elapsed")
             if (epoch+1) % cfg.save_interval == 0:
-                ckpt_name = f"Experiment {experiment} - epoch{str(epoch+1).zfill(3)}.pth"
+                ckpt_name = f"Experiment_{experiment}_epoch{str(epoch+1).zfill(3)}.pth"
                 ckpt_path = osp.join('/home/gaya/group6/checkpoints', ckpt_name)
                 torch.save(model.module.state_dict(), ckpt_path)
 

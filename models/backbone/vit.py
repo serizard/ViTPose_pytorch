@@ -378,10 +378,10 @@ class ViT(nn.Module):
         B, C, H, W = x.shape
         x, (Hp, Wp) = self.patch_embed(x)
 
-        if self.pos_embed is not None:
-            # fit for multiple GPU training
-            # since the first element for pos embed (sin-cos manner) is zero, it will cause no difference
-            x = x + self.pos_embed[:, 1:] + self.pos_embed[:, :1]
+        # if self.pos_embed is not None:
+        #     # fit for multiple GPU training
+        #     # since the first element for pos embed (sin-cos manner) is zero, it will cause no difference
+        #     x = x + self.pos_embed[:, 1:] + self.pos_embed[:, :1]
 
         for blk in self.blocks:
             if self.use_checkpoint:
