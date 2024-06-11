@@ -111,7 +111,7 @@ def main(config_path, model_name, experiment, batch_size, epochs):
 
     # Set model
     model = ViTPose(cfg.model)
-    pretrained_path = cfg.model['backbone']['pretrained']
+    pretrained_path = cfg.model['pretrained']
     if pretrained_path:
         pretrained_backbone = torch.load(pretrained_path)
         width, height = cfg.model['backbone']['img_size']
