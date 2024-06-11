@@ -223,7 +223,7 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
                 
                 if global_step < num_warmup_steps:
                     warmup_scheduler.step()
-                global_step += 1
+                # global_step += 1
                 
                 total_loss += loss.item()
                 train_pbar.set_description(f"🏋️> Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Loss {loss.item():.4f} | LR {optimizer.param_groups[0]['lr']:.6f} | Step")
