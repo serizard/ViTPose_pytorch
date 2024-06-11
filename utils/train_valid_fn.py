@@ -27,9 +27,6 @@ from pycocotools.cocoeval import COCOeval
 def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module, cfg: dict, logger) -> None:
     total_loss = 0
     model.eval()
-    all_outputs = []
-    all_targets = []
-    all_img_ids = []
 
     tic = time()  # Start timer for validation
     for dataloader in dataloaders:
@@ -44,10 +41,6 @@ def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module,
                 outputs = model(images)
                 loss = criterion(outputs, targets, target_weights)
                 total_loss += loss.item()
-
-                all_outputs.append(outputs.cpu().numpy())
-                all_targets.append(targets.cpu().numpy())
-                all_img_ids.append(img_ids)
                 
             # Calculate elapsed and estimated time
             elapsed_time = time() - tic
@@ -66,56 +59,7 @@ def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module,
     toc = time()  # End timer for validation
     elapsed_time = toc - tic  # Calculate elapsed time for validation
 
-    all_outputs = np.vstack(all_outputs)
-    all_targets = np.vstack(all_targets)
-    all_img_ids = [item for sublist in all_img_ids for item in sublist] 
-
-    # Convert predictions to COCO format
-    coco_results = convert_to_coco_format(all_outputs, all_targets, all_img_ids, cfg)
-
-    # Save the results to a JSON file
-    with open('./predictions.json', 'w') as f:
-        json.dump(coco_results, f)
-
-    # Ground truth annotations
-    cocoGt = COCO('/home/gaya/group6/datasets/annotations/person_keypoints_val2017.json')
-
-    # Load the prediction results
-    cocoDt = cocoGt.loadRes('./predictions.json')
-
-    # Initialize COCOeval
-    cocoEval = COCOeval(cocoGt, cocoDt, 'keypoints')
-
-    # Run evaluation
-    cocoEval.evaluate()
-    cocoEval.accumulate()
-    cocoEval.summarize()
-
-    # Optionally, log the results
-    logger.info('Validation results:')
-    cocoEval.summarize()
-
     return avg_loss, elapsed_time  # Return the elapsed time along with other metrics
-
-def convert_to_coco_format(all_outputs, all_targets, all_img_ids, cfg):
-    # List to store results in COCO format
-    coco_results = []
-
-    # Iterate over all predictions and actual targets
-    for outputs, targets, img_id in zip(all_outputs, all_targets, all_img_ids):
-        keypoints = outputs.reshape(-1).tolist()
-        keypoints_gt = targets.reshape(-1).tolist()
-
-        result = {
-            "image_id": img_id,
-            "category_id": 1,  # Assuming single category (person)
-            "keypoints": keypoints,
-            "score": 1.0  # Placeholder score
-        }
-
-        coco_results.append(result)
-
-    return coco_results
 
 
 def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Dataset, cfg: dict, distributed: bool, validate: bool,  timestamp: str, meta: dict, experiment: int) -> None:
@@ -238,6 +182,5 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
 
             # validation
             if validate:
-                tic2 = time()
                 avg_loss_valid, elapsed_time_valid = valid_model(model, dataloaders_valid, criterion, cfg, logger)
-                logger.info(f"[Summary-valid] Ex {experiment} Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (valid) {avg_loss_valid:.4f} | AP: {metrics_valid['AP']:.4f} | AR: {metrics_valid['AR']:.4f} | AP50: {metrics_valid['AP50']:.4f} | AP75: {metrics_valid['AP75']:.4f} | AR50: {metrics_valid['AR50']:.4f} | AR75: {metrics_valid['AR75']:.4f} --- {elapsed_time_valid:.5f} sec. elapsed")
+                logger.info(f"[Summary-valid] Ex {experiment} Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (valid) {avg_loss_valid:.4f} --- {elapsed_time_valid:.5f} sec. elapsed")
