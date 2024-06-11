@@ -12,6 +12,7 @@ from glob import glob
 
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 
 from utils.util import init_random_seed, set_random_seed
 from utils.dist_util import get_dist_info, init_dist
