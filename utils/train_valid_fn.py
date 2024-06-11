@@ -110,7 +110,8 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
     scheduler = MultiStepLR(optimizer, milestones, gamma)
 
     # Warm-up scheduler
-    num_warmup_steps = cfg.lr_config['warmup_iters']  # Number of warm-up steps
+    total_steps = len(dataloaders_train[0]) * cfg.total_epochs
+    num_warmup_steps = int(total_steps * 0.1) #cfg.lr_config['warmup_iters']  # Number of warm-up steps
     warmup_factor = cfg.lr_config['warmup_ratio']  # Initial learning rate = warmup_factor * learning_rate
     warmup_scheduler = LambdaLR(
         optimizer,
@@ -167,7 +168,7 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
                 
                 if global_step < num_warmup_steps:
                     warmup_scheduler.step()
-                # global_step += 1
+                global_step += 1
                 
                 total_loss += loss.item()
                 train_pbar.set_description(f"🏋️> Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Loss {loss.item():.4f} | LR {optimizer.param_groups[0]['lr']:.6f} | Step")

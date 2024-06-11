@@ -67,7 +67,7 @@ def main(config_path, model_name, experiment, batch_size, epochs):
     if not osp.exists(cfg.work_dir):
         os.makedirs(cfg.work_dir)
     session_dir = osp.join(cfg.work_dir, str(experiment).zfill(3))
-    os.makedirs(session_dir)
+    os.makedirs(session_dir, exist_ok=True)
     cfg.__setattr__('work_dir', session_dir)
         
 
