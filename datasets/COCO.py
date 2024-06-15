@@ -96,7 +96,8 @@ class COCODataset(Dataset):
 
         self.coco = COCO(self.annotation_path)
 
-        # 제한된 이미지 ID 목록 생성
+        # OWN CODE
+        # For demo, load only a subset of the dataset
         img_ids = self.coco.getImgIds()
         if max_images is not None:
             img_ids = img_ids[:max_images]
