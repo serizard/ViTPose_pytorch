@@ -226,6 +226,8 @@ def resize(input,
     if isinstance(size, torch.Size):
         size = tuple(int(x) for x in size)
     
+    # OWN CODE
+    # To match the size of positional embedding while loading pretrained backbone 
     return F.interpolate(input, size=size, scale_factor=scale_factor, mode=mode, align_corners=align_corners)
         
 def constant_init(module: nn.Module, val: float, bias: float = 0) -> None:

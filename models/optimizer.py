@@ -1,5 +1,7 @@
 import torch.optim as optim
 
+# OWN CODE
+# Define optimizer that applies layerwise decay after warmup
 class LayerDecayOptimizer:
     def __init__(self, optimizer, layerwise_decay_rate, warmup_scheduler):
         self.optimizer = optimizer

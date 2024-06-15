@@ -26,6 +26,8 @@ from pycocotools.cocoeval import COCOeval
 
 CUR_PATH = os.getcwd()
 
+# OWN CODE
+# Calculate MPJPE
 def calculate_mpjpe(preds, targets):
     return np.mean(np.linalg.norm(preds - targets, axis=-1))
 
@@ -158,7 +160,8 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
     else:
         model = DataParallel(model, device_ids=cfg.gpu_ids)
     
-    # Loss function
+    # OWN CODE
+    # To conduct experiments about loss functions
     if experiment == 13:
         criterion = CombinedTargetMSELoss(use_target_weight=cfg.model['keypoint_head']['loss_keypoint']['use_target_weight'])
     elif experiment == 14:
@@ -169,6 +172,8 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
     # Optimizer
     optimizer = AdamW(model.parameters(), lr=cfg.optimizer['lr']*10, betas=cfg.optimizer['betas'], weight_decay=cfg.optimizer['weight_decay'])
     
+    # OWN CODE
+    # Define warm-up scheduler
     num_training_steps = int(149312 / cfg.data['samples_per_gpu'])
     num_warmup_steps = int(0.1 * num_training_steps) # Number of warm-up steps
     warmup_scheduler = get_cosine_schedule_with_warmup(

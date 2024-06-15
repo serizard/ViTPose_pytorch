@@ -34,6 +34,9 @@ CUR_PATH = osp.dirname(__file__)
 @click.command()
 @click.option('--config-path', type=click.Path(exists=True), default='config.yaml', required=True, help='train config file path')
 @click.option('--model-name', type=str, default='b', required=True, help='[b: ViT-B, l: ViT-L, h: ViT-H, b-simple: ViT-B-simple, l-simple: ViT-L-simple, h-simple: ViT-H-simple]')
+
+# OWN CODE
+# Add experiment, batch-size, epochs, random-seed, and max-images as command line arguments
 @click.option('--experiment', type=int, default=1, help='1~12')
 @click.option('--batch-size', type=int, default=32, help='batch size')
 @click.option('--epochs', type=int, default=210, help='epochs')
@@ -119,6 +122,8 @@ def main(config_path, model_name, experiment, batch_size, epochs, random_seed, m
 
     model = ViTPose(cfg.model)
 
+    # OWN CODE
+    # Load pretrained model and resume from checkpoint
     pretrained_path = cfg.model['pretrained']
     if pretrained_path:
         pretrained_backbone = torch.load(pretrained_path)
