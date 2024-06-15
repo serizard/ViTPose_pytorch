@@ -1,4 +1,5 @@
 import os.path as osp
+import os
 import torch
 import torch.nn as nn
 import numpy as np
@@ -16,14 +17,14 @@ from torch.cuda.amp import autocast, GradScaler
 from transformers import get_cosine_schedule_with_warmup
 from tqdm import tqdm
 from time import time
-import json
-import math
 
 from utils.dist_util import get_dist_info, init_dist
 from utils.logging import get_root_logger
 
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
+
+CUR_PATH = os.getcwd()
 
 def calculate_mpjpe(preds, targets):
     return np.mean(np.linalg.norm(preds - targets, axis=-1))
@@ -126,6 +127,7 @@ def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module,
 
 
 def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Dataset, cfg: dict, distributed: bool, validate: bool,  timestamp: str, meta: dict, experiment: int, seed: int) -> None:
+    
     logger = get_root_logger()
     
     # Prepare data loaders
@@ -168,7 +170,7 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
     optimizer = AdamW(model.parameters(), lr=cfg.optimizer['lr']*10, betas=cfg.optimizer['betas'], weight_decay=cfg.optimizer['weight_decay'])
     
     num_training_steps = int(149312 / cfg.data['samples_per_gpu'])
-    num_warmup_steps = int(0.1 * num_training_steps) #cfg.lr_config['warmup_iters']  # Number of warm-up steps
+    num_warmup_steps = int(0.1 * num_training_steps) # Number of warm-up steps
     warmup_scheduler = get_cosine_schedule_with_warmup(
         optimizer,
         num_warmup_steps=num_warmup_steps,
@@ -245,7 +247,10 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
             logger.info(f"[Summary-train] Ex {experiment} Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (train) {avg_loss_train:.4f} --- {time()-tic:.5f} sec. elapsed")
             if (epoch+1) % cfg.save_interval == 0:
                 ckpt_name = f"Experiment_{experiment}_epoch{str(epoch+1).zfill(3)}.pth"
-                ckpt_path = osp.join('/home/gaya/group6/checkpoints', ckpt_name)
+                checkpoint_dir = osp.join(CUR_PATH, 'checkpoints')
+                if not osp.exists(checkpoint_dir):
+                    os.makedirs(checkpoint_dir)
+                ckpt_path = osp.join(checkpoint_dir, ckpt_name)
                 torch.save(model.module.state_dict(), ckpt_path)
 
             # validation
