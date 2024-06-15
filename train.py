@@ -38,8 +38,9 @@ CUR_PATH = osp.dirname(__file__)
 @click.option('--batch-size', type=int, default=32, help='batch size')
 @click.option('--epochs', type=int, default=210, help='epochs')
 @click.option('--random-seed', type=int, default=None, help='random seed')
+@click.option('--max-images', type=int, default=None, help='max images')
 
-def main(config_path, model_name, experiment, batch_size, epochs, random_seed):
+def main(config_path, model_name, experiment, batch_size, epochs, random_seed, max_images):
         
     cfg = {'b':b_cfg,
            'l':l_cfg,
@@ -160,7 +161,8 @@ def main(config_path, model_name, experiment, batch_size, epochs, random_seed):
         half_body_prob=0.3,
         use_different_joints_weight=True, 
         heatmap_sigma=3, 
-        soft_nms=False
+        soft_nms=False,
+        max_images = max_images
         )
     
     datasets_valid = COCODataset(
@@ -178,7 +180,8 @@ def main(config_path, model_name, experiment, batch_size, epochs, random_seed):
         half_body_prob=0.3,
         use_different_joints_weight=True, 
         heatmap_sigma=3, 
-        soft_nms=False
+        soft_nms=False,
+        max_images=max_images
         )
 
     train_model(

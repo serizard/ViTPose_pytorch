@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from models.losses import JointsMSELoss
+from models.losses import JointsMSELoss, JointsOHKMMSELoss
 from models.optimizer import LayerDecayOptimizer
 
 from torch.nn.parallel import DataParallel, DistributedDataParallel
@@ -25,11 +25,61 @@ from utils.logging import get_root_logger
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
+def calculate_mpjpe(preds, targets):
+    return np.mean(np.linalg.norm(preds - targets, axis=-1))
 
+class CombinedTargetMSELoss(nn.Module):
+    """MSE loss for combined target.
+        CombinedTarget: The combination of classification target
+        (response map) and regression target (offset map).
+        Paper ref: Huang et al. The Devil is in the Details: Delving into
+        Unbiased Data Processing for Human Pose Estimation (CVPR 2020).
+
+    Args:
+        use_target_weight (bool): Option to use weighted MSE loss.
+            Different joint types may have different target weights.
+        loss_weight (float): Weight of the loss. Default: 1.0.
+    """
+
+    def __init__(self, use_target_weight, loss_weight=1.):
+        super().__init__()
+        self.criterion = nn.MSELoss(reduction='mean')
+        self.use_target_weight = use_target_weight
+        self.loss_weight = loss_weight
+
+    def forward(self, output, target, target_weight):
+        batch_size = output.size(0)
+        num_channels = output.size(1)
+        heatmaps_pred = output.reshape(
+            (batch_size, num_channels, -1)).split(1, 1)
+        heatmaps_gt = target.reshape(
+            (batch_size, num_channels, -1)).split(1, 1)
+        loss = 0.
+        num_joints = num_channels // 3
+        for idx in range(num_joints):
+            heatmap_pred = heatmaps_pred[idx * 3].squeeze()
+            heatmap_gt = heatmaps_gt[idx * 3].squeeze()
+            offset_x_pred = heatmaps_pred[idx * 3 + 1].squeeze()
+            offset_x_gt = heatmaps_gt[idx * 3 + 1].squeeze()
+            offset_y_pred = heatmaps_pred[idx * 3 + 2].squeeze()
+            offset_y_gt = heatmaps_gt[idx * 3 + 2].squeeze()
+            if self.use_target_weight:
+                heatmap_pred = heatmap_pred * target_weight[:, idx]
+                heatmap_gt = heatmap_gt * target_weight[:, idx]
+            # classification loss
+            loss += 0.5 * self.criterion(heatmap_pred, heatmap_gt)
+            # regression loss
+            loss += 0.5 * self.criterion(heatmap_gt * offset_x_pred,
+                                         heatmap_gt * offset_x_gt)
+            loss += 0.5 * self.criterion(heatmap_gt * offset_y_pred,
+                                         heatmap_gt * offset_y_gt)
+        return loss / num_joints * self.loss_weight
 
 @torch.no_grad()
 def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module, cfg: dict, logger) -> None:
     total_loss = 0
+    all_preds = []
+    all_targets = []
     model.eval()
 
     tic = time()  # Start timer for validation
@@ -45,6 +95,9 @@ def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module,
                 outputs = model(images)
                 loss = criterion(outputs, targets, target_weights)
                 total_loss += loss.item()
+
+                all_preds.append(outputs.cpu().numpy())
+                all_targets.append(targets.cpu().numpy())
                 
             # Calculate elapsed and estimated time
             elapsed_time = time() - tic
@@ -58,12 +111,18 @@ def valid_model(model: nn.Module, dataloaders: DataLoader, criterion: nn.Module,
                 ETA=f"{estimated_time:.2f}s"
             )
 
-
     avg_loss = total_loss / (len(dataloader) * len(dataloaders))
     toc = time()  # End timer for validation
     elapsed_time = toc - tic  # Calculate elapsed time for validation
 
-    return avg_loss, elapsed_time  # Return the elapsed time along with other metrics
+    all_preds = np.concatenate(all_preds, axis=0)
+    all_targets = np.concatenate(all_targets, axis=0)
+
+    # Calculate MPJPE
+    mpjpe = calculate_mpjpe(all_preds, all_targets)
+
+    return avg_loss, elapsed_time, mpjpe 
+
 
 
 def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Dataset, cfg: dict, distributed: bool, validate: bool,  timestamp: str, meta: dict, experiment: int, seed: int) -> None:
@@ -98,7 +157,12 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
         model = DataParallel(model, device_ids=cfg.gpu_ids)
     
     # Loss function
-    criterion = JointsMSELoss(use_target_weight=cfg.model['keypoint_head']['loss_keypoint']['use_target_weight'])
+    if experiment == 13:
+        criterion = CombinedTargetMSELoss(use_target_weight=cfg.model['keypoint_head']['loss_keypoint']['use_target_weight'])
+    elif experiment == 14:
+        criterion = JointsOHKMMSELoss(use_target_weight=cfg.model['keypoint_head']['loss_keypoint']['use_target_weight'])
+    else:
+        criterion = JointsMSELoss(use_target_weight=cfg.model['keypoint_head']['loss_keypoint']['use_target_weight'])
     
     # Optimizer
     optimizer = AdamW(model.parameters(), lr=cfg.optimizer['lr']*10, betas=cfg.optimizer['betas'], weight_decay=cfg.optimizer['weight_decay'])
@@ -186,5 +250,5 @@ def train_model(model: nn.Module, datasets_train: Dataset, datasets_valid: Datas
 
             # validation
             if validate:
-                avg_loss_valid, elapsed_time_valid = valid_model(model, dataloaders_valid, criterion, cfg, logger)
-                logger.info(f"[Summary-valid] Ex {experiment} Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (valid) {avg_loss_valid:.4f} --- {elapsed_time_valid:.5f} sec. elapsed")
+                avg_loss_valid, elapsed_time_valid, mpjpe = valid_model(model, dataloaders_valid, criterion, cfg, logger)
+                logger.info(f"[Summary-valid] Ex {experiment} Epoch [{str(epoch+1).zfill(3)}/{str(cfg.total_epochs).zfill(3)}] | Average Loss (valid) {avg_loss_valid:.4f} | MPJPE (valid) {mpjpe:.4f} --- {elapsed_time_valid:.5f} sec. elapsed")

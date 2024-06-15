@@ -30,53 +30,28 @@ class COCODataset(Dataset):
                  is_train=True, use_gt_bboxes=True, bbox_path="",
                  image_width=288, image_height=384,
                  scale=True, scale_factor=0.35, flip_prob=0.5, rotate_prob=0.5, rotation_factor=45., half_body_prob=0.3,
-                 use_different_joints_weight=False, heatmap_sigma=3, soft_nms=False):
+                 use_different_joints_weight=False, heatmap_sigma=3, soft_nms=False, max_images=None):
         """
         Initializes a new COCODataset object.
 
-        Image and annotation indexes are loaded and stored in memory.
-        Annotations are preprocessed to have a simple list of annotations to iterate over.
-
-        Bounding boxes can be loaded from the ground truth or from a pickle file (in this case, no annotations are
-        provided).
-
         Args:
             root_path (str): dataset root path.
-                Default: "./datasets/COCO"
             data_version (str): desired version/folder of COCO. Possible options are "train2017", "val2017".
-                Default: "train2017"
             is_train (bool): train or eval mode. If true, train mode is used.
-                Default: True
             use_gt_bboxes (bool): use ground truth bounding boxes. If False, bbox_path is required.
-                Default: True
             bbox_path (str): bounding boxes pickle file path.
-                Default: ""
             image_width (int): image width.
-                Default: 288
             image_height (int): image height.
-                Default: ``384``
-            color_rgb (bool): rgb or bgr color mode. If True, rgb color mode is used.
-                Default: True
             scale (bool): scale mode.
-                Default: True
             scale_factor (float): scale factor.
-                Default: 0.35
             flip_prob (float): flip probability.
-                Default: 0.5
             rotate_prob (float): rotate probability.
-                Default: 0.5
             rotation_factor (float): rotation factor.
-                Default: 45.
             half_body_prob (float): half body probability.
-                Default: 0.3
             use_different_joints_weight (bool): use different joints weights.
-                If true, the following joints weights will be used:
-                [1., 1., 1., 1., 1., 1., 1., 1.2, 1.2, 1.5, 1.5, 1., 1., 1.2, 1.2, 1.5, 1.5]
-                Default: False
             heatmap_sigma (float): sigma of the gaussian used to create the heatmap.
-                Default: 3
             soft_nms (bool): enable soft non-maximum suppression.
-                Default: False
+            max_images (int): maximum number of images to load. Default is None (load all images).
         """
         super(COCODataset, self).__init__()
 
@@ -85,17 +60,16 @@ class COCODataset(Dataset):
         self.is_train = is_train
         self.use_gt_bboxes = use_gt_bboxes
         self.bbox_path = bbox_path
-        self.scale = scale  # ToDo Check
+        self.scale = scale
         self.scale_factor = scale_factor
         self.flip_prob = flip_prob
         self.rotate_prob = rotate_prob
         self.rotation_factor = rotation_factor
         self.half_body_prob = half_body_prob
-        self.use_different_joints_weight = use_different_joints_weight  # ToDo Check
+        self.use_different_joints_weight = use_different_joints_weight
         self.heatmap_sigma = heatmap_sigma
         self.soft_nms = soft_nms
 
-        # Image & annotation path
         self.data_path = f"{root_path}/{data_version}"
         self.annotation_path = f"{root_path}/annotations/person_keypoints_{data_version}.json"
 
@@ -104,12 +78,11 @@ class COCODataset(Dataset):
         
         self.heatmap_size = (int(image_width / 4), int(image_height / 4))
         self.heatmap_type = 'gaussian'
-        self.pixel_std = 200  # I don't understand the meaning of pixel_std (=200) in the original implementation
+        self.pixel_std = 200
 
         self.num_joints = 17
         self.num_joints_half_body = 8
-        
-        # eye, ear, shoulder, elbow, wrist, hip, knee, ankle
+
         self.flip_pairs = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16]]
         self.upper_body_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         self.lower_body_ids = [11, 12, 13, 14, 15, 16]
@@ -121,52 +94,26 @@ class COCODataset(Dataset):
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 
-        # Load COCO dataset - Create COCO object then load images and annotations
         self.coco = COCO(self.annotation_path)
 
-        # Create a list of annotations and the corresponding image (each image can contain more than one detection)
-
-        """ Load bboxes and joints
-        - if self.use_gt_bboxes -> Load GT bboxes and joints
-        - else -> Load pre-predicted bboxes by a detector (as YOLOv3) and null joints 
-        """
-
-        if not self.use_gt_bboxes:
-            """
-            bboxes must be saved as the original COCO annotations
-            i.e. the format must be:
-             bboxes = {
-               '<imgId>': [
-                 {
-                   'id': <annId>,  # progressive id for debugging
-                   'clean_bbox': np.array([<x>, <y>, <w>, <h>])}
-                 },
-                 ...
-               ],
-               ...
-             }
-            """
-            with open(self.bbox_path, 'rb') as fd:
-                bboxes = pickle.load(fd)
+        # 제한된 이미지 ID 목록 생성
+        img_ids = self.coco.getImgIds()
+        if max_images is not None:
+            img_ids = img_ids[:max_images]
 
         self.data = []
-        # load annotations for each image of COCO
-        for imgId in tqdm(self.coco.getImgIds(), desc="Prepare images, annotations ... "):
-
-            ann_ids = self.coco.getAnnIds(imgIds=imgId, iscrowd=False) # annotation ids
-            img = self.coco.loadImgs(imgId)[0] # load img
+        for imgId in tqdm(img_ids, desc="Prepare images, annotations ... "):
+            ann_ids = self.coco.getAnnIds(imgIds=imgId, iscrowd=False)
+            img = self.coco.loadImgs(imgId)[0]
 
             if self.use_gt_bboxes:
                 objs = self.coco.loadAnns(ann_ids)
 
-                # sanitize bboxes
                 valid_objs = []
                 for obj in objs:
-                    # Skip non-person objects (it should never happen)
                     if obj['category_id'] != 1:
                         continue
 
-                    # ignore objs without keypoints annotation
                     if max(obj['keypoints']) == 0:
                         continue
 
@@ -176,7 +123,6 @@ class COCODataset(Dataset):
                     x2 = np.min((img['width'] - 1, x1 + np.max((0, w - 1))))
                     y2 = np.min((img['height'] - 1, y1 + np.max((0, h - 1))))
 
-                    # Use only valid bounding boxes
                     if obj['area'] > 0 and x2 >= x1 and y2 >= y1:
                         obj['clean_bbox'] = [x1, y1, x2 - x1, y2 - y1]
                         valid_objs.append(obj)
@@ -184,36 +130,19 @@ class COCODataset(Dataset):
                 objs = valid_objs
 
             else:
+                with open(self.bbox_path, 'rb') as fd:
+                    bboxes = pickle.load(fd)
                 objs = bboxes[imgId]
 
-            # for each annotation of this image, add the formatted annotation to self.data
             for obj in objs:
                 joints = np.zeros((self.num_joints, 2), dtype=np.float32)
                 joints_visibility = np.ones((self.num_joints, 2), dtype=np.float32)
 
                 if self.use_gt_bboxes:
-                    """ COCO pre-processing
-
-                    - Moved above
-                    - Skip non-person objects (it should never happen)
-                    if obj['category_id'] != 1:
-                        continue
-                    
-                    # ignore objs without keypoints annotation
-                    if max(obj['keypoints']) == 0:
-                        continue
-                    """
-
                     for pt in range(self.num_joints):
                         joints[pt, 0] = obj['keypoints'][pt * 3 + 0]
                         joints[pt, 1] = obj['keypoints'][pt * 3 + 1]
-                        t_vis = int(np.clip(obj['keypoints'][pt * 3 + 2], 0, 1))  # ToDo check correctness
-                        """
-                        - COCO:
-                          if visibility == 0 -> keypoint is not in the image.
-                          if visibility == 1 -> keypoint is in the image BUT not visible (e.g. behind an object).
-                          if visibility == 2 -> keypoint looks clearly (i.e. it is not hidden).
-                        """
+                        t_vis = int(np.clip(obj['keypoints'][pt * 3 + 2], 0, 1))
                         joints_visibility[pt, 0] = t_vis
                         joints_visibility[pt, 1] = t_vis
 
@@ -223,17 +152,14 @@ class COCODataset(Dataset):
                     'imgId': imgId,
                     'annId': obj['id'],
                     'imgPath': f"{self.root_path}/{self.data_version}/{imgId:012d}.jpg",
-                    #'imgPath': os.path.join(self.root_path, self.data_version, 'id_%s.jpg' % imgId),
                     'center': center,
                     'scale': scale,
                     'joints': joints,
                     'joints_visibility': joints_visibility,
                 })
 
-        # Done check if we need prepare_data -> We should not
         print('\nCOCO dataset loaded!')
 
-        # Default values
         self.bbox_thre = 1.0
         self.image_thre = 0.0
         self.in_vis_thre = 0.2
